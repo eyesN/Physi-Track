@@ -1,0 +1,7 @@
+{
+  "name": "PhysiTrack: Motion & FBD Analyzer",
+  "description": "An advanced physics tool that tracks object paths from video and automatically generates Free Body Diagrams (FBD) using Gemini AI vision and reasoning.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
