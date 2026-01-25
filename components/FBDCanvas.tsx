@@ -12,7 +12,6 @@ interface FBDCanvasProps {
 const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0, angle: 0 });
   const requestRef = useRef<number>(0);
-  const forceScale = 40;
 
   // Transform coordinates so start is (0,0) and Y increases upwards
   const transformedPath = useMemo(() => {
@@ -23,22 +22,49 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
     return path.map(p => ({
       ...p,
       relX: p.x - x0,
-      relY: -(p.y - y0) // Invert Y: screen down is negative, up is positive
+      relY: -(p.y - y0)
     }));
   }, [path]);
 
+  // Simplistic check: If the object is more than 5% (relative units) above its starting point, 
+  // we might assume it lost ground contact, but we primarily trust the AI's force selection.
+  // However, we can perform a final filter here if needed.
+  const filteredForces = useMemo(() => {
+    return forces.filter(f => {
+      const name = f.name.toLowerCase();
+      const isNormal = name.includes('normal') || name.includes('contact');
+      if (isNormal) {
+        // If current position Y is significantly greater than starting Y, remove normal force
+        // We'll use a threshold based on the specific path point in the animation
+        return currentPos.y <= 2; // Very close to the "ground" level of the start point
+      }
+      return true;
+    });
+  }, [forces, currentPos.y]);
+
   // Find bounds for scaling the graph
   const bounds = useMemo(() => {
-    if (transformedPath.length === 0) return { minX: 0, maxX: 10, minY: 0, maxY: 10 };
+    if (transformedPath.length === 0) return { minX: -10, maxX: 10, minY: -10, maxY: 10 };
     const xs = transformedPath.map(p => p.relX);
     const ys = transformedPath.map(p => p.relY);
     return {
-      minX: Math.min(0, ...xs) - 5,
-      maxX: Math.max(0, ...xs) + 5,
-      minY: Math.min(0, ...ys) - 5,
-      maxY: Math.max(0, ...ys) + 5
+      minX: Math.min(0, ...xs) - 10,
+      maxX: Math.max(0, ...xs) + 10,
+      minY: Math.min(0, ...ys) - 10,
+      maxY: Math.max(0, ...ys) + 10
     };
   }, [transformedPath]);
+
+  // Calculate dynamic scaling for force vectors
+  const forceRenderScale = useMemo(() => {
+    if (forces.length === 0) return 1;
+    const maxMag = Math.max(...forces.map(f => f.magnitude));
+    if (maxMag === 0) return 1;
+    
+    // We want the longest arrow to be roughly 15% of the average dimension of the viewport
+    const viewportDim = ((bounds.maxX - bounds.minX) + (bounds.maxY - bounds.minY)) / 2;
+    return (viewportDim * 0.15) / maxMag;
+  }, [forces, bounds]);
 
   // Animation Loop
   useEffect(() => {
@@ -62,17 +88,21 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
         }
       }
 
+      const getLerpPos = (pA: any, pB: any, t: number) => {
+        const ratio = (t - pA.timestamp) / (pB.timestamp - pA.timestamp);
+        return {
+          x: pA.relX + (pB.relX - pA.relX) * ratio,
+          y: pA.relY + (pB.relY - pA.relY) * ratio,
+          angle: (pA.angle ?? 0) + ((pB.angle ?? 0) - (pA.angle ?? 0)) * ratio
+        };
+      };
+
       if (currentSimTime <= transformedPath[0].timestamp) {
         setCurrentPos({ x: transformedPath[0].relX, y: transformedPath[0].relY, angle: transformedPath[0].angle || 0 });
       } else if (currentSimTime >= transformedPath[transformedPath.length - 1].timestamp) {
         setCurrentPos({ x: transformedPath[transformedPath.length - 1].relX, y: transformedPath[transformedPath.length - 1].relY, angle: transformedPath[transformedPath.length - 1].angle || 0 });
       } else {
-        const ratio = (currentSimTime - p1.timestamp) / (p2.timestamp - p1.timestamp);
-        setCurrentPos({
-          x: p1.relX + (p2.relX - p1.relX) * ratio,
-          y: p1.relY + (p2.relY - p1.relY) * ratio,
-          angle: (p1.angle ?? 0) + ((p2.angle ?? 0) - (p1.angle ?? 0)) * ratio
-        });
+        setCurrentPos(getLerpPos(p1, p2, currentSimTime));
       }
 
       requestRef.current = requestAnimationFrame(animate);
@@ -82,15 +112,11 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
     return () => cancelAnimationFrame(requestRef.current);
   }, [transformedPath]);
 
-  // Viewbox setup for SVG
-  const width = 100;
-  const height = width * 0.5625; // 16:9
   const viewBox = `${bounds.minX} ${-bounds.maxY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}`;
 
   return (
     <div className="flex flex-col bg-slate-900 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden font-mono">
       <div className="relative aspect-video bg-slate-950 p-4 border-b border-slate-800">
-        {/* Grid and Axes are drawn in SVG to stay relative */}
         <svg viewBox={viewBox} className="absolute inset-0 w-full h-full overflow-visible">
           <defs>
             <pattern id="smallGrid" width="5" height="5" patternUnits="userSpaceOnUse">
@@ -104,24 +130,20 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
           
           <rect x={bounds.minX} y={-bounds.maxY} width={bounds.maxX - bounds.minX} height={bounds.maxY - bounds.minY} fill="url(#grid)" />
           
-          {/* Axes */}
           <line x1={bounds.minX} y1="0" x2={bounds.maxX} y2="0" stroke="#475569" strokeWidth="0.5" strokeDasharray="2,2" />
           <line x1="0" y1={-bounds.maxY} x2="0" y2={-bounds.minY} stroke="#475569" strokeWidth="0.5" strokeDasharray="2,2" />
 
-          {/* Trajectory Curve */}
           <path
             d={`M ${transformedPath.map(p => `${p.relX},${-p.relY}`).join(' L ')}`}
             fill="none"
             stroke="#10b981"
-            strokeWidth="1"
+            strokeWidth="0.8"
             strokeLinejoin="round"
             className="opacity-40"
           />
 
-          {/* Animated Object & FBD */}
           <g transform={`translate(${currentPos.x}, ${-currentPos.y})`}>
-            {/* Origin Point Indicator at (0,0) */}
-            <circle cx={-currentPos.x} cy={currentPos.y} r="0.8" fill="#ef4444" className="opacity-50" />
+            <circle cx={-currentPos.x} cy={currentPos.y} r="0.6" fill="#ef4444" className="opacity-50" />
             
             <g transform={`rotate(${currentPos.angle || 0})`}>
               <rect 
@@ -131,13 +153,11 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
                 className="shadow-2xl"
               />
               
-              {/* Force Vectors */}
-              {forces.map((force, index) => {
+              {filteredForces.map((force, index) => {
                 const rad = (force.direction * Math.PI) / 180;
-                // Counter-rotate the force so it stays in global physics frame
                 const globalRad = rad - ((currentPos.angle || 0) * Math.PI / 180);
-                const targetX = Math.cos(globalRad) * force.magnitude * 2; // scaled for SVG units
-                const targetY = -Math.sin(globalRad) * force.magnitude * 2;
+                const targetX = Math.cos(globalRad) * force.magnitude * forceRenderScale;
+                const targetY = -Math.sin(globalRad) * force.magnitude * forceRenderScale;
 
                 return (
                   <g key={index}>
@@ -145,7 +165,7 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
                       x1="0" y1="0"
                       x2={targetX} y2={targetY}
                       stroke={force.color}
-                      strokeWidth="0.8"
+                      strokeWidth="0.6"
                       strokeLinecap="round"
                       markerEnd={`url(#arrowhead-${index})`}
                     />
@@ -166,7 +186,7 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
                         x={targetX * 1.5}
                         y={targetY * 1.5}
                         fill={force.color}
-                        fontSize="2"
+                        fontSize="1.8"
                         fontWeight="900"
                         textAnchor="middle"
                         className="uppercase"
@@ -180,8 +200,7 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
             </g>
           </g>
 
-          {/* Labels for origin */}
-          <text x="1" y="-1" fill="#ef4444" fontSize="2" fontWeight="bold">(0,0)</text>
+          <text x="1" y="-1" fill="#ef4444" fontSize="1.8" fontWeight="bold">(0,0)</text>
         </svg>
 
         <div className="absolute top-6 left-6 flex flex-col gap-1">
@@ -200,26 +219,26 @@ const FBDCanvas: React.FC<FBDCanvasProps> = ({ forces, objectName, path }) => {
                 <h3 className="text-xl font-black text-white uppercase italic tracking-tighter">
                   {objectName} Pathing
                 </h3>
-                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Dynamic Equilibrium Analysis</p>
+                <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Force Component Resolution</p>
              </div>
           </div>
           <div className="flex gap-4">
              <div className="text-right">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">X-Delta</p>
-                <p className="text-xl font-black text-white italic">{currentPos.x.toFixed(1)}</p>
+                <p className="text-xl font-black text-white italic">{currentPos.x.toFixed(1)}%</p>
              </div>
              <div className="text-right">
                 <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Y-Delta</p>
-                <p className="text-xl font-black text-white italic">{currentPos.y.toFixed(1)}</p>
+                <p className="text-xl font-black text-white italic">{currentPos.y.toFixed(1)}%</p>
              </div>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {forces.map((f, i) => (
+          {filteredForces.map((f, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800/40 border border-slate-700/30">
               <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: f.color }}></div>
-              <span className="text-[10px] font-black text-slate-300 uppercase tracking-tighter">{f.name}</span>
+              <span className="text-[10px] font-black text-slate-300 uppercase tracking-tighter">{f.name}: {f.magnitude.toFixed(1)}N</span>
             </div>
           ))}
         </div>

@@ -178,7 +178,6 @@ const App: React.FC = () => {
         <div className="lg:col-span-6 space-y-10">
           <div className={`relative bg-black rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.6)] border-[10px] border-slate-900 aspect-square lg:aspect-video transition-all duration-700 ${appState === AppState.RESULTS ? 'scale-90 opacity-40 blur-sm pointer-events-none' : ''}`}>
             
-            {/* The Black Screen until active */}
             <div className={`w-full h-full bg-slate-950 transition-opacity duration-1000 ${cameraActive ? 'opacity-100' : 'opacity-100'}`}>
               <video 
                 ref={videoRef} 
@@ -271,20 +270,6 @@ const App: React.FC = () => {
           {appState === AppState.RESULTS && analysis ? (
             <div className="space-y-12 animate-in fade-in slide-in-from-right-16 duration-1000">
               <FBDCanvas forces={analysis.forces} objectName={analysis.objectName} path={analysis.path} />
-              
-              <div className="grid grid-cols-2 gap-6">
-                 <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl">
-                    <p className="text-slate-600 text-[10px] uppercase tracking-[0.4em] font-black mb-4">Initial Vel.</p>
-                    <p className="text-5xl font-black text-white tracking-tighter italic">{analysis.calculatedVelocity.toFixed(2)}</p>
-                    <p className="text-slate-700 text-[9px] font-black uppercase mt-2">v_u / interval</p>
-                 </div>
-                 <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl">
-                    <p className="text-slate-600 text-[10px] uppercase tracking-[0.4em] font-black mb-4">Net Accel.</p>
-                    <p className="text-5xl font-black text-white tracking-tighter italic">{analysis.calculatedAcceleration.toFixed(2)}</p>
-                    <p className="text-slate-700 text-[9px] font-black uppercase mt-2">a_u / interval²</p>
-                 </div>
-              </div>
-
               <MotionGraph path={analysis.path} />
             </div>
           ) : (
