@@ -3,6 +3,7 @@ export interface Point {
   x: number;
   y: number;
   timestamp: number;
+  angle?: number; // Tilt of the object in degrees
 }
 
 export interface Force {

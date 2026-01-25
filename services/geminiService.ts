@@ -5,7 +5,6 @@ import { Point, PhysicsAnalysis, Force } from "../types";
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 export async function analyzeMotion(frames: { data: string; timestamp: number }[]): Promise<PhysicsAnalysis> {
-  // Convert frame data to parts for Gemini
   const frameParts = frames.map(f => ({
     inlineData: {
       mimeType: 'image/jpeg',
@@ -18,14 +17,15 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
     contents: [
       ...frameParts,
       {
-        text: `Analyze this sequence of frames showing a moving object (likely a ball). 
-        1. Identify the primary moving object.
-        2. For each frame, provide the (x, y) coordinates of the center of the object as a percentage of the image width and height (0-100).
-        3. Infer the physics of the situation (e.g., projectile motion, free fall, rolling).
-        4. List the forces acting on the object at the MIDPOINT of the sequence (Gravity, Air Resistance, Normal Force, Friction, etc.) with relative magnitudes and directions in degrees (0 = right, 90 = up, 180 = left, 270 = down).
-        5. Provide a summary of the motion.
+        text: `Analyze this sequence of frames showing a moving object.
+        1. Identify the moving object.
+        2. For each frame, provide the center (x, y) coordinates of the object as percentages (0-100).
+        3. For each frame, provide the "angle" (tilt) of the object in degrees (0 = upright/no tilt, positive = clockwise tilt).
+        4. Determine the primary forces acting on the object during its main trajectory.
+        5. Provide relative magnitudes and directions in degrees (0=right, 90=up, 180=left, 270=down).
+        6. Summarize the physical principles observed.
         
-        Return the result strictly as JSON.`
+        Return the result as JSON.`
       }
     ],
     config: {
@@ -40,9 +40,10 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
               type: Type.OBJECT,
               properties: {
                 x: { type: Type.NUMBER },
-                y: { type: Type.NUMBER }
+                y: { type: Type.NUMBER },
+                angle: { type: Type.NUMBER, description: "Rotation angle of the object" }
               },
-              required: ["x", "y"]
+              required: ["x", "y", "angle"]
             }
           },
           forces: {
@@ -67,13 +68,12 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
     }
   });
 
-  const rawJson = response.text;
-  const parsed = JSON.parse(rawJson);
+  const parsed = JSON.parse(response.text);
 
-  // Map timestamps back to the path
   const pathWithTimestamps: Point[] = (parsed.path || []).map((p: any, i: number) => ({
     x: p.x,
     y: p.y,
+    angle: p.angle || 0,
     timestamp: frames[i]?.timestamp || i * 0.1
   }));
 
@@ -82,7 +82,11 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
     path: pathWithTimestamps,
     forces: parsed.forces.map((f: any) => ({
       ...f,
-      color: f.color || (f.name.toLowerCase().includes('gravity') ? '#ef4444' : '#3b82f6')
+      color: f.color || (
+        f.name.toLowerCase().includes('gravity') || f.name.toLowerCase().includes('weight') ? '#f87171' : 
+        f.name.toLowerCase().includes('air') || f.name.toLowerCase().includes('drag') ? '#60a5fa' :
+        f.name.toLowerCase().includes('friction') ? '#fbbf24' : '#c084fc'
+      )
     })),
     summary: parsed.summary,
     calculatedVelocity: parsed.velocityInferred || 0,
