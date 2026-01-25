@@ -2,7 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Point, PhysicsAnalysis, Force } from "../types";
 
-// Always use process.env.API_KEY directly in the named parameter.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export async function analyzeMotion(frames: { data: string; timestamp: number }[]): Promise<PhysicsAnalysis> {
@@ -20,14 +19,19 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
         ...frameParts,
         {
           text: `Analyze this sequence of frames showing a moving object.
-          1. Identify the moving object.
-          2. For each frame, provide center (x, y) as percentages (0-100).
-          3. For each frame, provide "angle" (tilt) in degrees.
-          4. Determine primary forces. IMPORTANT: Only include a "Normal Force" or "Contact Force" if the object is clearly resting on or sliding along a surface. If the object is in the air (projectile motion), do NOT include Normal Force.
-          5. Provide relative magnitudes and directions in degrees (0=right, 90=up, 180=left, 270=down).
-          6. Summarize physical principles.
+          1. Identify the moving object (e.g., "Ball", "Phone", "Car").
+          2. For each frame, provide the center (x, y) of the object as percentages (0-100 of the frame width/height).
+          3. For each frame, provide "angle" (tilt) of the object in degrees.
+          4. Determine the primary physical forces acting on the object:
+             - Gravity/Weight: Usually 270 degrees (straight down).
+             - Normal Force: Perpendicular to the surface it's on (e.g., 90 degrees if on ground).
+             - Friction/Drag: Opposite to the direction of motion.
+             - Applied/Tension: In the direction of pull/push.
+          5. Directions are in standard polar coordinates: 0=right, 90=up, 180=left, 270=down.
+          6. Provide magnitudes as relative units (e.g., 9.8 for gravity, others relative to that).
+          7. Summarize the physical principles (e.g., Projectile Motion, Constant Acceleration).
           
-          Return as JSON.`
+          Return valid JSON only.`
         }
       ]
     },
@@ -86,6 +90,7 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
     path: pathWithTimestamps,
     forces: (parsed.forces || []).map((f: any) => ({
       ...f,
+      // Ensure color exists if Gemini misses it
       color: f.color || (
         f.name.toLowerCase().includes('gravity') || f.name.toLowerCase().includes('weight') ? '#f87171' : 
         f.name.toLowerCase().includes('air') || f.name.toLowerCase().includes('drag') ? '#60a5fa' :
