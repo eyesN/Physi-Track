@@ -2,9 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Point, PhysicsAnalysis, Force } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Always use process.env.API_KEY directly in the named parameter.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export async function analyzeMotion(frames: { data: string; timestamp: number }[]): Promise<PhysicsAnalysis> {
+  // Map frames to inlineData parts for the multi-modal request.
   const frameParts = frames.map(f => ({
     inlineData: {
       mimeType: 'image/jpeg',
@@ -12,22 +14,25 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
     }
   }));
 
+  // Use the recommended contents structure with parts and correct model name.
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: [
-      ...frameParts,
-      {
-        text: `Analyze this sequence of frames showing a moving object.
-        1. Identify the moving object.
-        2. For each frame, provide the center (x, y) coordinates of the object as percentages (0-100).
-        3. For each frame, provide the "angle" (tilt) of the object in degrees (0 = upright/no tilt, positive = clockwise tilt).
-        4. Determine the primary forces acting on the object during its main trajectory.
-        5. Provide relative magnitudes and directions in degrees (0=right, 90=up, 180=left, 270=down).
-        6. Summarize the physical principles observed.
-        
-        Return the result as JSON.`
-      }
-    ],
+    contents: {
+      parts: [
+        ...frameParts,
+        {
+          text: `Analyze this sequence of frames showing a moving object.
+          1. Identify the moving object.
+          2. For each frame, provide the center (x, y) coordinates of the object as percentages (0-100).
+          3. For each frame, provide the "angle" (tilt) of the object in degrees (0 = upright/no tilt, positive = clockwise tilt).
+          4. Determine the primary forces acting on the object during its main trajectory.
+          5. Provide relative magnitudes and directions in degrees (0=right, 90=up, 180=left, 270=down).
+          6. Summarize the physical principles observed.
+          
+          Return the result as JSON.`
+        }
+      ]
+    },
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -68,7 +73,9 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
     }
   });
 
-  const parsed = JSON.parse(response.text);
+  // Extract text from response and parse as JSON. Access .text property directly.
+  const jsonStr = response.text?.trim() || "{}";
+  const parsed = JSON.parse(jsonStr);
 
   const pathWithTimestamps: Point[] = (parsed.path || []).map((p: any, i: number) => ({
     x: p.x,
@@ -78,9 +85,9 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
   }));
 
   return {
-    objectName: parsed.objectName,
+    objectName: parsed.objectName || "Unknown Object",
     path: pathWithTimestamps,
-    forces: parsed.forces.map((f: any) => ({
+    forces: (parsed.forces || []).map((f: any) => ({
       ...f,
       color: f.color || (
         f.name.toLowerCase().includes('gravity') || f.name.toLowerCase().includes('weight') ? '#f87171' : 
@@ -88,7 +95,7 @@ export async function analyzeMotion(frames: { data: string; timestamp: number }[
         f.name.toLowerCase().includes('friction') ? '#fbbf24' : '#c084fc'
       )
     })),
-    summary: parsed.summary,
+    summary: parsed.summary || "",
     calculatedVelocity: parsed.velocityInferred || 0,
     calculatedAcceleration: parsed.accelerationInferred || 0
   };

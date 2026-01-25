@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Activity, RefreshCw, AlertCircle, Play, Square, FileVideo, Loader2, Info, ChevronRight } from 'lucide-react';
+import { Camera, Activity, RefreshCw, AlertCircle, Play, Square, FileVideo, Loader2, ChevronRight, Zap, ShieldCheck } from 'lucide-react';
 import { analyzeMotion } from './services/geminiService';
 import { Point, Force, PhysicsAnalysis, AppState } from './types';
 import FBDCanvas from './components/FBDCanvas';
@@ -8,6 +8,7 @@ import MotionGraph from './components/MotionGraph';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
+  const [cameraActive, setCameraActive] = useState(false);
   const [analysis, setAnalysis] = useState<PhysicsAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -16,10 +17,9 @@ const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const recordingInterval = useRef<number | null>(null);
   const framesRef = useRef<{ data: string; timestamp: number }[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
 
   const startCamera = async () => {
+    setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
@@ -27,39 +27,28 @@ const App: React.FC = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => videoRef.current?.play();
+        setCameraActive(true);
         setAppState(AppState.IDLE);
-        setError(null);
       }
     } catch (err) {
-      setError("Camera access denied. Check browser permissions.");
+      setError("Camera access was denied or is unavailable. Please check your browser permissions.");
+      setCameraActive(false);
     }
   };
 
   useEffect(() => {
-    startCamera();
     return () => {
       if (recordingInterval.current) window.clearInterval(recordingInterval.current);
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
   const startRecording = () => {
     setAppState(AppState.RECORDING);
     framesRef.current = [];
-    recordedChunksRef.current = [];
     
-    const stream = videoRef.current?.srcObject as MediaStream;
-    if (stream) {
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      mediaRecorderRef.current.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-      };
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        setVideoUrl(URL.createObjectURL(blob));
-      };
-      mediaRecorderRef.current.start();
-    }
-
     const startTime = Date.now();
     recordingInterval.current = window.setInterval(() => {
       if (videoRef.current && canvasRef.current) {
@@ -75,16 +64,13 @@ const App: React.FC = () => {
           if (framesRef.current.length >= 15) handleStopRecording();
         }
       }
-    }, 300); // Faster sampling for better tilt detection
+    }, 300);
   };
 
   const handleStopRecording = () => {
     if (recordingInterval.current) {
       window.clearInterval(recordingInterval.current);
       recordingInterval.current = null;
-    }
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
     }
     setAppState(AppState.ANALYZING);
     performAnalysis(framesRef.current);
@@ -97,7 +83,7 @@ const App: React.FC = () => {
       setAnalysis(result);
       setAppState(AppState.RESULTS);
     } catch (err: any) {
-      setError(err.message || "Motion analysis failed. Ensure object is clearly visible.");
+      setError(err.message || "Motion analysis failed.");
       setAppState(AppState.IDLE);
     }
   };
@@ -117,7 +103,7 @@ const App: React.FC = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const duration = video.duration;
-      const numFrames = 15; // Increased frames for better granularity
+      const numFrames = 15;
       const step = duration / numFrames;
       const frames: { data: string; timestamp: number }[] = [];
       let currentFrameIdx = 0;
@@ -147,181 +133,179 @@ const App: React.FC = () => {
     setAnalysis(null);
     setAppState(AppState.IDLE);
     setVideoUrl(null);
-    startCamera();
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 antialiased selection:bg-indigo-500/30">
-      <header className="flex flex-col md:flex-row items-center justify-between mb-10 gap-6">
-        <div className="flex items-center space-x-5">
+    <div className="max-w-7xl mx-auto px-4 py-10 antialiased selection:bg-indigo-500/30">
+      <header className="flex flex-col md:flex-row items-center justify-between mb-12 gap-8">
+        <div className="flex items-center space-x-6">
           <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-30 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
-            <div className="relative bg-slate-900 p-3.5 rounded-2xl shadow-xl border border-white/5">
-              <Activity className="w-8 h-8 text-indigo-400" />
+            <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-cyan-500 rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000"></div>
+            <div className="relative bg-slate-900 p-4 rounded-2xl border border-white/5 shadow-2xl">
+              <Activity className="w-10 h-10 text-indigo-400" />
             </div>
           </div>
           <div>
-            <h1 className="text-4xl font-black tracking-tighter text-white uppercase italic leading-none">PhysiTrack Pro</h1>
-            <p className="text-slate-500 text-[10px] font-black tracking-[0.4em] uppercase mt-2">Dynamic Vector Intelligence</p>
+            <h1 className="text-5xl font-black tracking-tighter text-white uppercase italic leading-[0.8]">PhysiTrack</h1>
+            <p className="text-slate-500 text-[10px] font-black tracking-[0.5em] uppercase mt-3 ml-1">Vector Modeling Engine</p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
-          <label className="flex items-center space-x-3 bg-slate-800 hover:bg-slate-700 text-slate-100 px-6 py-3 rounded-2xl cursor-pointer transition-all border border-slate-700 font-black text-xs shadow-lg uppercase tracking-wider">
+          <label className="flex items-center space-x-3 bg-slate-800 hover:bg-slate-700 text-slate-100 px-8 py-4 rounded-3xl cursor-pointer transition-all border border-slate-700 font-black text-xs shadow-xl uppercase tracking-widest">
             <FileVideo className="w-4 h-4" />
-            <span>Import Footage</span>
+            <span>Process Video</span>
             <input type="file" accept="video/*" className="hidden" onChange={handleFileUpload} />
           </label>
           <button 
             onClick={reset}
-            className="flex items-center space-x-3 bg-slate-900 hover:bg-slate-800 text-slate-300 px-6 py-3 rounded-2xl font-black border border-slate-700 transition-all text-xs shadow-lg uppercase tracking-wider"
+            className="flex items-center space-x-3 bg-slate-900 hover:bg-slate-800 text-slate-400 px-8 py-4 rounded-3xl font-black border border-slate-800 transition-all text-xs uppercase tracking-widest"
+            title="Reset Simulation"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Reset</span>
           </button>
         </div>
       </header>
 
       {error && (
-        <div className="mb-8 p-5 bg-red-950/40 border-l-4 border-red-500 rounded-r-2xl flex items-center space-x-4 text-red-100 animate-in fade-in slide-in-from-top-4 shadow-xl">
-          <AlertCircle className="w-6 h-6 shrink-0 text-red-400" />
-          <p className="text-sm font-bold uppercase tracking-tight">{error}</p>
+        <div className="mb-10 p-6 bg-red-950/40 border-l-8 border-red-500 rounded-r-3xl flex items-center space-x-6 text-red-100 animate-in fade-in slide-in-from-top-4 shadow-2xl">
+          <AlertCircle className="w-8 h-8 shrink-0 text-red-400" />
+          <p className="text-sm font-black uppercase tracking-tight">{error}</p>
         </div>
       )}
 
-      <main className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <div className="lg:col-span-7 space-y-8">
-          <div className="relative bg-slate-950 rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] border-[8px] border-slate-900 aspect-video group">
-            {appState === AppState.RESULTS && videoUrl ? (
-              <video 
-                src={videoUrl} 
-                className="w-full h-full object-contain"
-                autoPlay 
-                loop 
-                muted 
-                playsInline
-              />
-            ) : (
+      <main className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <div className="lg:col-span-6 space-y-10">
+          <div className={`relative bg-black rounded-[3rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.6)] border-[10px] border-slate-900 aspect-square lg:aspect-video transition-all duration-700 ${appState === AppState.RESULTS ? 'scale-90 opacity-40 blur-sm pointer-events-none' : ''}`}>
+            
+            {/* The Black Screen until active */}
+            <div className={`w-full h-full bg-slate-950 transition-opacity duration-1000 ${cameraActive ? 'opacity-100' : 'opacity-100'}`}>
               <video 
                 ref={videoRef} 
-                className={`w-full h-full object-cover transition-opacity duration-1000 ${appState === AppState.ANALYZING ? 'opacity-10' : 'opacity-100'}`}
+                className={`w-full h-full object-cover transition-opacity duration-1000 ${cameraActive ? 'opacity-100' : 'opacity-0'} ${appState === AppState.ANALYZING ? 'opacity-20' : ''}`}
                 muted 
                 playsInline 
               />
-            )}
-            
+            </div>
+
             <canvas ref={canvasRef} className="hidden" />
             
-            {appState === AppState.IDLE && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-[2px] transition-all duration-700">
-                <div className="bg-slate-900/95 p-10 rounded-[2.5rem] border border-white/5 text-center max-w-sm animate-in zoom-in duration-700 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8)]">
-                  <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-indigo-500/20">
-                    <Camera className="w-10 h-10 text-indigo-400" />
-                  </div>
-                  <h2 className="text-3xl font-black text-white mb-4 uppercase italic tracking-tighter">Ready to capture</h2>
-                  <p className="text-slate-400 text-sm mb-10 leading-relaxed font-medium">Position target object and initiate high-frequency tracking. Our neural engine handles the vectors.</p>
+            {!cameraActive && (
+               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-md">
+                 <div className="bg-slate-900/90 p-12 rounded-[3rem] border border-white/5 text-center max-w-sm shadow-2xl border-dashed border-indigo-500/30">
+                    <div className="w-16 h-16 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-8">
+                       <ShieldCheck className="w-8 h-8 text-indigo-400" />
+                    </div>
+                    <h2 className="text-2xl font-black text-white mb-4 uppercase italic tracking-tighter">Sensor Offline</h2>
+                    <p className="text-slate-500 text-xs mb-10 font-bold leading-relaxed uppercase tracking-widest">Privacy control active. Grant camera permissions to initialize real-time vector sampling.</p>
+                    <button 
+                      onClick={startCamera}
+                      className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-6 rounded-[2rem] font-black uppercase tracking-[0.3em] flex items-center justify-center space-x-4 shadow-2xl transition-all hover:scale-[1.02] active:scale-95"
+                    >
+                      <Zap className="w-5 h-5 fill-indigo-200" />
+                      <span>Activate Sensor</span>
+                    </button>
+                 </div>
+               </div>
+            )}
+
+            {cameraActive && appState === AppState.IDLE && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px]">
+                <div className="bg-slate-900/95 p-12 rounded-[3rem] border border-white/5 text-center max-w-sm shadow-2xl">
+                  <Camera className="w-14 h-14 text-indigo-500 mx-auto mb-8" />
+                  <h2 className="text-3xl font-black text-white mb-6 uppercase italic tracking-tighter">Ready to capture</h2>
+                  <p className="text-slate-500 text-xs mb-12 font-bold leading-relaxed uppercase tracking-widest">Identify the target object and record its displacement. Gemini will solve the vectors.</p>
                   <button 
                     onClick={startRecording}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-5 rounded-[1.5rem] font-black uppercase tracking-[0.2em] flex items-center justify-center space-x-4 shadow-2xl shadow-indigo-600/40 transition-all hover:scale-[1.02] active:scale-95"
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-6 rounded-[2rem] font-black uppercase tracking-[0.3em] flex items-center justify-center space-x-4 shadow-2xl transition-all"
                   >
                     <Play className="w-5 h-5 fill-current" />
-                    <span>Start Sampling</span>
+                    <span>Initiate Scan</span>
                   </button>
                 </div>
               </div>
             )}
 
             {appState === AppState.RECORDING && (
-              <div className="absolute top-10 left-10 flex items-center space-x-5 bg-red-600/90 px-6 py-3 rounded-full backdrop-blur-xl shadow-2xl animate-pulse border border-red-400/50">
-                <div className="w-4 h-4 bg-white rounded-full"></div>
-                <span className="text-white font-black text-xs tracking-[0.3em] uppercase">Sampling Reality</span>
+              <div className="absolute top-12 left-12 flex items-center space-x-6 bg-red-600 px-8 py-4 rounded-full backdrop-blur-2xl shadow-2xl animate-pulse border border-red-400/50">
+                <div className="w-5 h-5 bg-white rounded-full"></div>
+                <span className="text-white font-black text-xs tracking-[0.5em] uppercase">Recording Data</span>
               </div>
             )}
 
             {appState === AppState.RECORDING && (
-              <div className="absolute bottom-10 left-1/2 -translate-x-1/2">
+              <div className="absolute bottom-12 left-1/2 -translate-x-1/2">
                 <button 
                   onClick={handleStopRecording}
-                  className="bg-white hover:bg-slate-100 text-slate-900 px-12 py-5 rounded-[2rem] font-black uppercase tracking-[0.2em] flex items-center space-x-4 shadow-[0_0_50px_rgba(255,255,255,0.2)] transition-all scale-110 border-[6px] border-white/10"
+                  className="bg-white text-slate-950 px-14 py-6 rounded-[2.5rem] font-black uppercase tracking-[0.4em] flex items-center space-x-4 shadow-2xl transition-all scale-110"
                 >
                   <Square className="w-5 h-5 fill-current" />
-                  <span>Finalize Buffer</span>
+                  <span>Compute</span>
                 </button>
               </div>
             )}
 
             {appState === AppState.ANALYZING && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-3xl">
-                <div className="relative mb-12">
-                  <div className="absolute inset-0 bg-indigo-500/30 blur-[100px] rounded-full animate-pulse"></div>
-                  <Loader2 className="w-24 h-24 text-indigo-500 animate-spin relative" />
-                </div>
-                <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter">Vectorizing</h2>
-                <p className="text-slate-500 font-black mt-3 uppercase tracking-[0.4em] text-[10px]">Processing Multi-Frame Dynamics</p>
-                <div className="mt-16 w-80 h-1.5 bg-slate-900 rounded-full overflow-hidden border border-white/5">
-                  <div className="h-full bg-indigo-500 animate-[loading_1s_infinite_ease-in-out]" style={{ width: '35%' }}></div>
+                <Loader2 className="w-24 h-24 text-indigo-500 animate-spin mb-10" />
+                <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter">Neural Resolution</h2>
+                <div className="mt-12 w-64 h-1 bg-slate-900 rounded-full overflow-hidden">
+                  <div className="h-full bg-indigo-500 animate-[loading_1.5s_infinite]" style={{ width: '40%' }}></div>
                 </div>
               </div>
             )}
           </div>
 
           {appState === AppState.RESULTS && analysis && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-8 duration-700">
-               <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-indigo-500/10 transition-colors"></div>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-slate-500 text-[10px] uppercase tracking-[0.3em] font-black">Velocity Scalar</p>
-                    <Activity className="w-4 h-4 text-indigo-500" />
-                  </div>
-                  <p className="text-4xl font-black text-white tracking-tighter italic">{analysis.calculatedVelocity.toFixed(3)} <span className="text-slate-600 text-sm not-italic font-black tracking-normal ml-1">V_unit</span></p>
-               </div>
-               <div className="bg-slate-900 p-8 rounded-[2rem] border border-slate-800 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-emerald-500/10 transition-colors"></div>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-slate-500 text-[10px] uppercase tracking-[0.3em] font-black">Net Accel.</p>
-                    <ChevronRight className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <p className="text-4xl font-black text-white tracking-tighter italic">{analysis.calculatedAcceleration.toFixed(3)} <span className="text-slate-600 text-sm not-italic font-black tracking-normal ml-1">A_unit</span></p>
-               </div>
+            <div className="p-10 bg-slate-900/50 rounded-[3rem] border border-slate-800/50 relative">
+               <div className="absolute top-8 left-8 w-1 h-16 bg-indigo-600 rounded-full"></div>
+               <h4 className="text-slate-300 font-black mb-6 uppercase italic tracking-[0.2em] ml-8">Contextual Summary</h4>
+               <p className="text-slate-500 text-sm font-medium leading-loose italic ml-8">
+                 {analysis.summary}
+               </p>
             </div>
           )}
         </div>
 
-        <div className="lg:col-span-5 space-y-10">
+        <div className="lg:col-span-6 space-y-12">
           {appState === AppState.RESULTS && analysis ? (
-            <div className="space-y-10 animate-in fade-in slide-in-from-right-16 duration-1000">
-              <FBDCanvas forces={analysis.forces} objectName={analysis.objectName} videoSrc={videoUrl} path={analysis.path} />
-              <MotionGraph path={analysis.path} />
-              <div className="p-10 bg-slate-900 rounded-[2.5rem] border border-slate-800 relative shadow-2xl">
-                <div className="absolute top-8 left-8 w-1 h-12 bg-indigo-600 rounded-full"></div>
-                <h4 className="text-slate-100 font-black mb-6 uppercase italic tracking-wider flex items-center gap-3 ml-6">
-                  Theoretical Context
-                </h4>
-                <p className="text-slate-500 text-sm leading-relaxed font-medium italic ml-6">
-                  {analysis.summary}
-                </p>
+            <div className="space-y-12 animate-in fade-in slide-in-from-right-16 duration-1000">
+              <FBDCanvas forces={analysis.forces} objectName={analysis.objectName} path={analysis.path} />
+              
+              <div className="grid grid-cols-2 gap-6">
+                 <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                    <p className="text-slate-600 text-[10px] uppercase tracking-[0.4em] font-black mb-4">Initial Vel.</p>
+                    <p className="text-5xl font-black text-white tracking-tighter italic">{analysis.calculatedVelocity.toFixed(2)}</p>
+                    <p className="text-slate-700 text-[9px] font-black uppercase mt-2">v_u / interval</p>
+                 </div>
+                 <div className="bg-slate-900 p-8 rounded-[2.5rem] border border-slate-800 shadow-xl">
+                    <p className="text-slate-600 text-[10px] uppercase tracking-[0.4em] font-black mb-4">Net Accel.</p>
+                    <p className="text-5xl font-black text-white tracking-tighter italic">{analysis.calculatedAcceleration.toFixed(2)}</p>
+                    <p className="text-slate-700 text-[9px] font-black uppercase mt-2">a_u / interval²</p>
+                 </div>
               </div>
+
+              <MotionGraph path={analysis.path} />
             </div>
           ) : (
-            <div className="h-full min-h-[600px] flex flex-col items-center justify-center text-center p-16 bg-slate-900/40 rounded-[4rem] border-4 border-dashed border-slate-800/80 transition-all">
-              <div className="bg-slate-800 p-8 rounded-[2.5rem] mb-10 shadow-2xl">
-                <ChevronRight className="w-12 h-12 text-slate-500" />
+            <div className="h-full min-h-[600px] flex flex-col items-center justify-center text-center p-20 bg-slate-900/20 rounded-[4rem] border-4 border-dashed border-slate-800/60">
+              <div className="w-24 h-24 bg-slate-800/50 rounded-[2.5rem] flex items-center justify-center mb-10">
+                <ChevronRight className="w-10 h-10 text-slate-600" />
               </div>
-              <h3 className="text-slate-400 font-black text-2xl uppercase tracking-tighter italic">Intelligence Awaiting</h3>
-              <p className="text-slate-600 text-sm font-bold max-w-[320px] mt-6 leading-relaxed uppercase tracking-widest">
-                Capture object motion to begin vector reconstruction and force mapping.
+              <h3 className="text-slate-500 font-black text-2xl uppercase tracking-tighter italic">Physics Playground</h3>
+              <p className="text-slate-700 text-xs font-black max-w-[280px] mt-6 leading-relaxed uppercase tracking-[0.3em]">
+                Capture real-world motion to reconstruct kinematic models and force diagrams.
               </p>
             </div>
           )}
         </div>
       </main>
 
-      <footer className="mt-32 py-16 border-t border-slate-800 flex flex-col items-center">
-        <div className="flex items-center space-x-4 text-slate-800 font-black italic uppercase text-[11px] tracking-[0.5em] mb-6">
-          <Activity className="w-4 h-4" />
-          <span>PhysiTrack Engine v3.2.0-STABLE</span>
+      <footer className="mt-40 py-16 border-t border-slate-800 flex flex-col items-center">
+        <div className="flex items-center space-x-6 text-slate-800 font-black italic uppercase text-[12px] tracking-[0.6em] mb-4 opacity-50">
+          <Activity className="w-5 h-5" />
+          <span>PhysiTrack Build 3.4.5_REL</span>
         </div>
-        <p className="text-slate-900 text-[10px] font-black uppercase tracking-widest">GEMINI MULTIMODAL CORE • REALTIME VECTOR INFERENCE</p>
       </footer>
 
       <style>{`
