@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Activity, RefreshCw, AlertCircle, Play, Square, FileVideo, Loader2, ChevronRight, Zap, ShieldCheck } from 'lucide-react';
-import { analyzeMotion } from './services/geminiService';
+import { analyzeMotion } from './services/analysisService';
 import { Point, Force, PhysicsAnalysis, AppState } from './types';
 import FBDCanvas from './components/FBDCanvas';
 import MotionGraph from './components/MotionGraph';
@@ -213,7 +213,7 @@ const App: React.FC = () => {
                 <div className="bg-slate-900/95 p-12 rounded-[3rem] border border-white/5 text-center max-w-sm shadow-2xl">
                   <Camera className="w-14 h-14 text-indigo-500 mx-auto mb-8" />
                   <h2 className="text-3xl font-black text-white mb-6 uppercase italic tracking-tighter">Ready to capture</h2>
-                  <p className="text-slate-500 text-xs mb-12 font-bold leading-relaxed uppercase tracking-widest">Identify the target object and record its displacement. Gemini will solve the vectors.</p>
+                  <p className="text-slate-500 text-xs mb-12 font-bold leading-relaxed uppercase tracking-widest">Identify the target object and record its displacement. The engine will solve the vectors.</p>
                   <button 
                     onClick={startRecording}
                     className="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-6 rounded-[2rem] font-black uppercase tracking-[0.3em] flex items-center justify-center space-x-4 shadow-2xl transition-all"
