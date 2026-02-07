@@ -1,4 +1,4 @@
-import { computeFbdArrows, drawFbdOverlay, drawFbdPalette } from './fbdDrawing.js';
+import { computeFbdArrows, drawFbdPalette } from './fbdDrawing.js';
 import { detectObjects } from './objectDetection.js';
 
 const video = document.getElementById('video');
@@ -32,6 +32,7 @@ let stream = null;
 let animationId = null;
 let offscreen = null;
 let prevGray = null;
+let edgeCanvas = null;
 
 const analysisScale = 0.22;
 
@@ -147,38 +148,47 @@ const trackFrame = () => {
   const fbdState = getFbdState();
   drawFbdPalette(paletteCtx, fbdState);
 
+  if (!edgeCanvas) {
+    edgeCanvas = document.createElement('canvas');
+  }
+  if (edgeCanvas.width !== aw || edgeCanvas.height !== ah) {
+    edgeCanvas.width = aw;
+    edgeCanvas.height = ah;
+  }
+
+  const edgeCtx = edgeCanvas.getContext('2d');
+  const edgeImage = edgeCtx.createImageData(aw, ah);
+  const edgeData = edgeImage.data;
+
+  for (let i = 0; i < detection.edgeMap.length; i += 1) {
+    const value = detection.edgeMap[i];
+    if (!value) continue;
+    const idx = i * 4;
+    edgeData[idx] = 56;
+    edgeData[idx + 1] = 189;
+    edgeData[idx + 2] = 248;
+    edgeData[idx + 3] = 220;
+  }
+
+  edgeCtx.putImageData(edgeImage, 0, 0);
+  overlayCtx.drawImage(edgeCanvas, 0, 0, overlay.width, overlay.height);
+
   if (detection.objects.length === 0) {
     selectedInfo.textContent = 'None';
     overlayCtx.fillStyle = 'rgba(157, 170, 185, 0.7)';
     overlayCtx.font = '14px "Space Grotesk", "Segoe UI", sans-serif';
     overlayCtx.fillText('No object detected', 16, 28);
+
+    paletteCtx.save();
+    paletteCtx.fillStyle = 'rgba(157, 170, 185, 0.8)';
+    paletteCtx.font = '14px "Space Grotesk", "Segoe UI", sans-serif';
+    paletteCtx.textAlign = 'center';
+    paletteCtx.textBaseline = 'middle';
+    paletteCtx.fillText('No object detected', paletteCanvas.width / 2, 24);
+    paletteCtx.restore();
   } else {
-    const scaleX = overlay.width / aw;
-    const scaleY = overlay.height / ah;
-
-    detection.objects.forEach((obj, index) => {
-      const boxX = obj.minX * scaleX;
-      const boxY = obj.minY * scaleY;
-      const boxW = Math.max(1, obj.maxX - obj.minX + 1) * scaleX;
-      const boxH = Math.max(1, obj.maxY - obj.minY + 1) * scaleY;
-
-      overlayCtx.strokeStyle = index === 0 ? 'rgba(74, 222, 128, 0.95)' : 'rgba(148, 163, 184, 0.7)';
-      overlayCtx.lineWidth = index === 0 ? 3 : 2;
-      overlayCtx.strokeRect(boxX, boxY, boxW, boxH);
-    });
-
     const primary = detection.objects[0];
-    const cx = primary.centerX * scaleX;
-    const cy = primary.centerY * scaleY;
-
     selectedInfo.textContent = `#1 (${Math.round(primary.area)} px)`;
-
-    drawFbdOverlay(overlayCtx, { x: cx, y: cy }, fbdState.arrows, -fbdState.thetaRad);
-
-    overlayCtx.fillStyle = 'rgba(56, 189, 248, 0.95)';
-    overlayCtx.beginPath();
-    overlayCtx.arc(cx, cy, 5, 0, Math.PI * 2);
-    overlayCtx.fill();
   }
 
   animationId = requestAnimationFrame(trackFrame);

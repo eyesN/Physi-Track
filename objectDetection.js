@@ -105,5 +105,5 @@ export function detectObjects(frame, prevGray, config) {
 
   objects.sort((a, b) => b.area - a.area);
 
-  return { gray, objects };
+  return { gray, objects, edgeMap, width, height };
 }

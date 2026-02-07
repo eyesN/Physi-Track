@@ -66,12 +66,13 @@ function drawArrow(ctx, from, to, color, dashed) {
   ctx.restore();
 }
 
-export function drawFbdPalette(ctx, { arrows, thetaRad }) {
+export function drawFbdPalette(ctx, { arrows, thetaRad }, options = {}) {
   const { width, height } = ctx.canvas;
+  const scale = typeof options.scale === 'number' ? options.scale : 1;
   ctx.clearRect(0, 0, width, height);
 
   const center = { x: width / 2, y: height / 2 };
-  const planeHalf = Math.min(width, height) * 0.38;
+  const planeHalf = Math.min(width, height) * 0.38 * scale;
   const uParallel = { x: Math.cos(thetaRad), y: -Math.sin(thetaRad) };
 
   const planeX1 = center.x - uParallel.x * planeHalf;
@@ -94,7 +95,7 @@ export function drawFbdPalette(ctx, { arrows, thetaRad }) {
   ctx.strokeStyle = '#94a3b8';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.rect(-18, -12, 36, 24);
+  ctx.rect(-18 * scale, -12 * scale, 36 * scale, 24 * scale);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
@@ -104,14 +105,16 @@ export function drawFbdPalette(ctx, { arrows, thetaRad }) {
   ctx.textBaseline = 'middle';
 
   arrows.forEach((arrow) => {
-    if (arrow.length <= 0) return;
-    const endX = center.x + arrow.vec.x * arrow.length;
-    const endY = center.y + arrow.vec.y * arrow.length;
+    const scaledLength = arrow.length * scale;
+    if (scaledLength <= 0) return;
+    const endX = center.x + arrow.vec.x * scaledLength;
+    const endY = center.y + arrow.vec.y * scaledLength;
 
     drawArrow(ctx, center, { x: endX, y: endY }, arrow.color, arrow.dashed);
 
-    const labelX = center.x + arrow.vec.x * (arrow.length + 14);
-    const labelY = center.y + arrow.vec.y * (arrow.length + 14);
+    const labelOffset = Math.max(10, 14 * scale);
+    const labelX = center.x + arrow.vec.x * (scaledLength + labelOffset);
+    const labelY = center.y + arrow.vec.y * (scaledLength + labelOffset);
 
     ctx.fillStyle = arrow.color;
     ctx.fillText(arrow.label, labelX, labelY);
