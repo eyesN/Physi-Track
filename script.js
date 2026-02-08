@@ -26,6 +26,10 @@ const muValue = document.getElementById('muValue');
 const paletteCtx = paletteCanvas.getContext('2d');
 const overlayCtx = overlay.getContext('2d');
 
+if (!paletteCtx || !overlayCtx) {
+  throw new Error('Canvas context unavailable. Check #paletteCanvas and #overlay.');
+}
+
 let cameraActive = false;
 let tracking = false;
 let stream = null;
@@ -156,22 +160,24 @@ const trackFrame = () => {
     edgeCanvas.height = ah;
   }
 
-  const edgeCtx = edgeCanvas.getContext('2d');
-  const edgeImage = edgeCtx.createImageData(aw, ah);
-  const edgeData = edgeImage.data;
+  if (detection.edgeMap) {
+    const edgeCtx = edgeCanvas.getContext('2d');
+    const edgeImage = edgeCtx.createImageData(aw, ah);
+    const edgeData = edgeImage.data;
 
-  for (let i = 0; i < detection.edgeMap.length; i += 1) {
-    const value = detection.edgeMap[i];
-    if (!value) continue;
-    const idx = i * 4;
-    edgeData[idx] = 56;
-    edgeData[idx + 1] = 189;
-    edgeData[idx + 2] = 248;
-    edgeData[idx + 3] = 220;
+    for (let i = 0; i < detection.edgeMap.length; i += 1) {
+      const value = detection.edgeMap[i];
+      if (!value) continue;
+      const idx = i * 4;
+      edgeData[idx] = 56;
+      edgeData[idx + 1] = 189;
+      edgeData[idx + 2] = 248;
+      edgeData[idx + 3] = 220;
+    }
+
+    edgeCtx.putImageData(edgeImage, 0, 0);
+    overlayCtx.drawImage(edgeCanvas, 0, 0, overlay.width, overlay.height);
   }
-
-  edgeCtx.putImageData(edgeImage, 0, 0);
-  overlayCtx.drawImage(edgeCanvas, 0, 0, overlay.width, overlay.height);
 
   if (detection.objects.length === 0) {
     selectedInfo.textContent = 'None';
